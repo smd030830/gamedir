@@ -1,10 +1,16 @@
-﻿using System.Collections;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AI; // AI, 내비게이션 시스템 관련 코드를 가져오기
 
 // 좀비 AI 구현
 public class Zombie : LivingEntity {
+    public enum Variant {
+        Walker,
+        Charger
+    }
+
     public LayerMask whatIsTarget; // 추적 대상 레이어
+    public Variant variant { get; private set; } // 좀비의 행동 타입
 
     private LivingEntity targetEntity; // 추적할 대상
     private NavMeshAgent navMeshAgent; // 경로계산 AI 에이전트
@@ -20,6 +26,8 @@ public class Zombie : LivingEntity {
     public float damage = 20f; // 공격력
     public float timeBetAttack = 0.5f; // 공격 간격
     private float lastAttackTime; // 마지막 공격 시점
+    private float baseSpeed; // 기본 이동 속도
+    private bool charging; // 돌진 중 여부
 
     // 추적할 대상이 존재하는지 알려주는 프로퍼티
     private bool hasTarget
@@ -52,18 +60,36 @@ public class Zombie : LivingEntity {
     public void Setup(ZombieData zombieData) {
         // 체력 설정
         startingHealth = zombieData.health;
-        health = zombieData.damage;
+        health = zombieData.health;
         // 공격력 설정
         damage = zombieData.damage;
+        timeBetAttack = 0.5f;
         // 내비메시 에이전트의 이동 속도 설정
-        navMeshAgent.speed = zombieData.speed;
+        baseSpeed = zombieData.speed;
+        navMeshAgent.speed = baseSpeed;
+        navMeshAgent.acceleration = 8f;
         // 렌더러가 사용중인 머테리얼의 컬러를 변경, 외형 색이 변함
         zombieRenderer.material.color = zombieData.skinColor;
+        variant = Variant.Walker;
+    }
+
+    public void SetVariant(Variant newVariant) {
+        variant = newVariant;
+
+        if (variant == Variant.Charger)
+        {
+            damage *= 1.35f;
+            timeBetAttack = 0.8f;
+            navMeshAgent.speed = baseSpeed * 1.15f;
+            navMeshAgent.acceleration = 18f;
+            zombieRenderer.material.color = Color.red;
+        }
     }
 
     private void Start() {
         // 게임 오브젝트 활성화와 동시에 AI의 추적 루틴 시작
         StartCoroutine(UpdatePath());
+        StartCoroutine(ChargeRoutine());
     }
 
     private void Update() {
@@ -114,6 +140,39 @@ public class Zombie : LivingEntity {
             // 0.25초 주기로 처리 반복
             yield return new WaitForSeconds(0.25f);
         }
+    }
+
+    private IEnumerator ChargeRoutine() {
+        while (!dead)
+        {
+            if (variant == Variant.Charger && hasTarget && !charging)
+            {
+                float targetDistance = Vector3.Distance(transform.position, targetEntity.transform.position);
+                if (targetDistance >= 4f && targetDistance <= 12f)
+                {
+                    yield return StartCoroutine(Charge());
+                }
+            }
+
+            yield return new WaitForSeconds(1.2f);
+        }
+    }
+
+    private IEnumerator Charge() {
+        charging = true;
+        navMeshAgent.speed = baseSpeed * 3.2f;
+        navMeshAgent.acceleration = 40f;
+
+        yield return new WaitForSeconds(0.85f);
+
+        if (dead || !navMeshAgent.enabled)
+        {
+            yield break;
+        }
+
+        navMeshAgent.speed = baseSpeed * 1.15f;
+        navMeshAgent.acceleration = 18f;
+        charging = false;
     }
 
     // 데미지를 입었을때 실행할 처리

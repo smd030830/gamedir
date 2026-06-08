@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 // 좀비 게임 오브젝트를 주기적으로 생성
@@ -54,7 +54,7 @@ public class ZombieSpawner : MonoBehaviour {
     private void CreateZombie() {
         // 사용할 좀비 데이터 랜덤으로 결정
         ZombieData zombieData = zombieDatas[Random.Range(0, zombieDatas.Length)];
-        
+
         // 생성할 위치를 랜덤으로 결정
         Transform spawnPoint = spawnPoints[Random.Range(0, spawnPoints.Length)];
 
@@ -63,6 +63,7 @@ public class ZombieSpawner : MonoBehaviour {
 
         // 생성한 좀비의 능력치 설정
         zombie.Setup(zombieData);
+        ApplyVariant(zombie);
 
         // 생성된 좀비를 리스트에 추가
         zombies.Add(zombie);
@@ -73,6 +74,16 @@ public class ZombieSpawner : MonoBehaviour {
         // 사망한 좀비를 10 초 뒤에 파괴
         zombie.onDeath += () => Destroy(zombie.gameObject, 10f);
         // 좀비 사망시 점수 상승
-        zombie.onDeath += () => GameManager.instance.AddScore(100);
+        zombie.onDeath += () => GameManager.instance.AddScore(
+            zombie.variant == Zombie.Variant.Charger ? 175 : 100);
+    }
+
+    private void ApplyVariant(Zombie zombie) {
+        float chargerChance = Mathf.Clamp01(0.12f + wave * 0.03f);
+
+        if (wave >= 2 && Random.value < chargerChance)
+        {
+            zombie.SetVariant(Zombie.Variant.Charger);
+        }
     }
 }

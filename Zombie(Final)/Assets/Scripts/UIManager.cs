@@ -47,6 +47,7 @@ public class UIManager : MonoBehaviour {
 
     // 게임 재시작
     public void GameRestart() {
+        Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 }

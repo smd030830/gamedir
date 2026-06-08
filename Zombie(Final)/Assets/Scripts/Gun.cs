@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using UnityEngine;
 
 // 총을 구현한다
@@ -10,7 +10,13 @@ public class Gun : MonoBehaviour {
         Reloading // 재장전 중
     }
 
+    public enum FireMode {
+        Rifle,
+        Shotgun
+    }
+
     public State state { get; private set; } // 현재 총의 상태
+    public FireMode fireMode { get; private set; } // 현재 발사 모드
 
     public Transform fireTransform; // 총알이 발사될 위치
 
@@ -22,14 +28,19 @@ public class Gun : MonoBehaviour {
     private AudioSource gunAudioPlayer; // 총 소리 재생기
 
     public GunData gunData; // 총의 현재 데이터
-    
+
     private float fireDistance = 50f; // 사정거리
+    private const int ShotgunPelletCount = 7;
+    private const float ShotgunSpreadAngle = 8f;
+    private const float ShotgunDistance = 28f;
+    private const float ShotgunDamageMultiplier = 0.45f;
+    private Coroutine shotgunRoutine;
 
     public int ammoRemain = 100; // 남은 전체 탄약
     public int magAmmo; // 현재 탄창에 남아있는 탄약
-    
+
     private float lastFireTime; // 총을 마지막으로 발사한 시점
-    
+
     private void Awake() {
         // 사용할 컴포넌트들의 참조를 가져오기
         gunAudioPlayer = GetComponent<AudioSource>();
@@ -49,8 +60,19 @@ public class Gun : MonoBehaviour {
 
         // 총의 현재 상태를 총을 쏠 준비가 된 상태로 변경
         state = State.Ready;
+        fireMode = FireMode.Rifle;
         // 마지막으로 총을 쏜 시점을 초기화
         lastFireTime = 0;
+    }
+
+    // 일정 시간 동안 샷건 모드를 장착한다
+    public void EquipShotgun(float duration) {
+        if (shotgunRoutine != null)
+        {
+            StopCoroutine(shotgunRoutine);
+        }
+
+        shotgunRoutine = StartCoroutine(ShotgunRoutine(duration));
     }
 
     // 발사 시도
@@ -59,6 +81,12 @@ public class Gun : MonoBehaviour {
         // && 마지막 총 발사 시점에서 timeBetFire 이상의 시간이 지남
         if (state == State.Ready && Time.time >= lastFireTime + gunData.timeBetFire)
         {
+            if (magAmmo <= 0)
+            {
+                state = State.Empty;
+                return;
+            }
+
             // 마지막 총 발사 시점을 갱신
             lastFireTime = Time.time;
             // 실제 발사 처리 실행
@@ -68,26 +96,70 @@ public class Gun : MonoBehaviour {
 
     // 실제 발사 처리
     private void Shot() {
+        Vector3 effectHitPosition;
+
+        if (fireMode == FireMode.Shotgun)
+        {
+            effectHitPosition = ShotSpread();
+            magAmmo -= Mathf.Min(2, magAmmo);
+        }
+        else
+        {
+            effectHitPosition = ShotSingle();
+            magAmmo--;
+        }
+
+        // 발사 이펙트 재생 시작
+        StartCoroutine(ShotEffect(effectHitPosition));
+
+        if (magAmmo <= 0)
+        {
+            // 탄창에 남은 탄약이 없다면, 총의 현재 상태를 Empty으로 갱신
+            state = State.Empty;
+        }
+    }
+
+    private Vector3 ShotSingle() {
+        return FireRay(fireTransform.forward, fireDistance, gunData.damage);
+    }
+
+    private Vector3 ShotSpread() {
+        Vector3 centerHitPosition = fireTransform.position + fireTransform.forward * ShotgunDistance;
+
+        for (int i = 0; i < ShotgunPelletCount; i++)
+        {
+            Vector3 direction = GetSpreadDirection();
+            Vector3 hitPosition = FireRay(
+                direction,
+                ShotgunDistance,
+                gunData.damage * ShotgunDamageMultiplier);
+
+            if (i == 0)
+            {
+                centerHitPosition = hitPosition;
+            }
+        }
+
+        return centerHitPosition;
+    }
+
+    private Vector3 FireRay(Vector3 direction, float distance, float damage) {
         // 레이캐스트에 의한 충돌 정보를 저장하는 컨테이너
         RaycastHit hit;
         // 총알이 맞은 곳을 저장할 변수
-        Vector3 hitPosition = Vector3.zero;
+        Vector3 hitPosition;
 
         // 레이캐스트(시작지점, 방향, 충돌 정보 컨테이너, 사정거리)
-        if (Physics.Raycast(fireTransform.position,
-            fireTransform.forward, out hit, fireDistance))
+        if (Physics.Raycast(fireTransform.position, direction, out hit, distance))
         {
-            // 레이가 어떤 물체와 충돌한 경우
-
             // 충돌한 상대방으로부터 IDamageable 오브젝트를 가져오기 시도
-            IDamageable target =
-                hit.collider.GetComponent<IDamageable>();
+            IDamageable target = hit.collider.GetComponent<IDamageable>();
 
             // 상대방으로 부터 IDamageable 오브젝트를 가져오는데 성공했다면
             if (target != null)
             {
                 // 상대방의 OnDamage 함수를 실행시켜서 상대방에게 데미지 주기
-                target.OnDamage(gunData.damage, hit.point, hit.normal);
+                target.OnDamage(damage, hit.point, hit.normal);
             }
 
             // 레이가 충돌한 위치 저장
@@ -97,20 +169,18 @@ public class Gun : MonoBehaviour {
         {
             // 레이가 다른 물체와 충돌하지 않았다면
             // 총알이 최대 사정거리까지 날아갔을때의 위치를 충돌 위치로 사용
-            hitPosition = fireTransform.position +
-                          fireTransform.forward * fireDistance;
+            hitPosition = fireTransform.position + direction * distance;
         }
 
-        // 발사 이펙트 재생 시작
-        StartCoroutine(ShotEffect(hitPosition));
+        return hitPosition;
+    }
 
-        // 남은 탄환의 수를 -1
-        magAmmo--;
-        if (magAmmo <= 0)
-        {
-            // 탄창에 남은 탄약이 없다면, 총의 현재 상태를 Empty으로 갱신
-            state = State.Empty;
-        }
+    private Vector3 GetSpreadDirection() {
+        Quaternion randomSpread =
+            Quaternion.AngleAxis(Random.Range(-ShotgunSpreadAngle, ShotgunSpreadAngle), fireTransform.up) *
+            Quaternion.AngleAxis(Random.Range(-ShotgunSpreadAngle, ShotgunSpreadAngle), fireTransform.right);
+
+        return randomSpread * fireTransform.forward;
     }
 
     // 발사 이펙트와 소리를 재생하고 총알 궤적을 그린다
@@ -179,5 +249,14 @@ public class Gun : MonoBehaviour {
 
         // 총의 현재 상태를 발사 준비된 상태로 변경
         state = State.Ready;
+    }
+
+    private IEnumerator ShotgunRoutine(float duration) {
+        fireMode = FireMode.Shotgun;
+
+        yield return new WaitForSeconds(duration);
+
+        fireMode = FireMode.Rifle;
+        shotgunRoutine = null;
     }
 }

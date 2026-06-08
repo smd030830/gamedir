@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI; // UI 관련 코드
 
 // 플레이어 캐릭터의 생명체로서의 동작을 담당
@@ -15,6 +15,9 @@ public class PlayerHealth : LivingEntity {
     private PlayerMovement playerMovement; // 플레이어 움직임 컴포넌트
     private PlayerShooter playerShooter; // 플레이어 슈터 컴포넌트
 
+    private float shield; // 현재 실드량
+    private float shieldEndTime; // 실드 만료 시점
+
     private void Awake() {
         // 사용할 컴포넌트를 가져오기
         playerAnimator = GetComponent<Animator>();
@@ -28,6 +31,9 @@ public class PlayerHealth : LivingEntity {
         // LivingEntity의 OnEnable() 실행 (상태 초기화)
         base.OnEnable();
 
+        shield = 0f;
+        shieldEndTime = 0f;
+
         // 체력 슬라이더 활성화
         healthSlider.gameObject.SetActive(true);
         // 체력 슬라이더의 최대값을 기본 체력값으로 변경
@@ -40,18 +46,48 @@ public class PlayerHealth : LivingEntity {
         playerShooter.enabled = true;
     }
 
+    private void Update() {
+        if (shield > 0f && Time.time >= shieldEndTime)
+        {
+            shield = 0f;
+        }
+    }
+
     // 체력 회복
     public override void RestoreHealth(float newHealth) {
         // LivingEntity의 RestoreHealth() 실행 (체력 증가)
         base.RestoreHealth(newHealth);
+        health = Mathf.Min(health, startingHealth);
         // 체력 갱신
         healthSlider.value = health;
     }
 
+    // 일정 시간 동안 데미지를 대신 받아주는 실드 활성화
+    public void ActivateShield(float shieldAmount, float duration) {
+        if (dead)
+        {
+            return;
+        }
+
+        shield = Mathf.Max(shield, shieldAmount);
+        shieldEndTime = Time.time + duration;
+    }
 
     // 데미지 처리
     public override void OnDamage(float damage, Vector3 hitPoint,
         Vector3 hitDirection) {
+        if (shield > 0f)
+        {
+            float blockedDamage = Mathf.Min(shield, damage);
+            shield -= blockedDamage;
+            damage -= blockedDamage;
+        }
+
+        if (damage <= 0f)
+        {
+            return;
+        }
+
         if (!dead)
         {
             // 사망하지 않은 경우에만 효과음을 재생
