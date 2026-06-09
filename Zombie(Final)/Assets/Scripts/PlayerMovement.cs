@@ -1,41 +1,99 @@
 using UnityEngine;
 
-// 플레이어 캐릭터를 사용자 입력에 따라 움직이는 스크립트
+// Moves the player, turns toward the mouse, and provides a short evasive dash.
 public class PlayerMovement : MonoBehaviour {
-    public float moveSpeed = 5f; // 움직임의 속도
-    public float rotateSpeed = 720f; // 마우스 방향을 향해 회전하는 속도
-    public bool rotateToMouse = true; // 마우스 위치 기반 회전 사용 여부
+    public float moveSpeed = 5f;
+    public float rotateSpeed = 1800f;
+    public bool rotateToMouse = true;
 
-    private Animator playerAnimator; // 플레이어 캐릭터의 애니메이터
-    private Camera mainCamera; // 마우스 위치를 월드 좌표로 바꾸기 위한 카메라
-    private PlayerInput playerInput; // 플레이어 입력을 알려주는 컴포넌트
-    private Rigidbody playerRigidbody; // 플레이어 캐릭터의 리지드바디
+    public KeyCode dashKey = KeyCode.LeftShift;
+    public float dashDistance = 4.5f;
+    public float dashDuration = 0.16f;
+    public float dashCooldown = 1.8f;
+
+    public bool IsDashing { get; private set; }
+
+    private Animator playerAnimator;
+    private Camera mainCamera;
+    private PlayerInput playerInput;
+    private Rigidbody playerRigidbody;
+
+    private bool dashRequested;
+    private float dashEndTime;
+    private float nextDashTime;
+    private Vector3 dashDirection;
+    private GUIStyle dashStyle;
 
     private void Start() {
-        // 사용할 컴포넌트들의 참조를 가져오기
         playerInput = GetComponent<PlayerInput>();
         playerRigidbody = GetComponent<Rigidbody>();
         playerAnimator = GetComponent<Animator>();
         mainCamera = Camera.main;
     }
 
-    // FixedUpdate는 물리 갱신 주기에 맞춰 실행됨
-    private void FixedUpdate() {
-        // 회전 실행
-        Rotate();
-        // 움직임 실행
-        Move();
-
-        // 입력값에 따라 애니메이터의 Move 파라미터 값을 변경
-        playerAnimator.SetFloat("Move", GetMoveDirection().magnitude);
+    private void Update() {
+        if (Input.GetKeyDown(dashKey))
+        {
+            dashRequested = true;
+        }
     }
 
-    // 캐릭터가 바라보는 방향과 상관없이 월드 좌표 기준으로 움직임
-    private void Move() {
-        Vector3 moveDistance = GetMoveDirection() * moveSpeed * Time.deltaTime;
+    private void OnDisable() {
+        IsDashing = false;
+        dashRequested = false;
+    }
 
-        // 리지드바디를 통해 게임 오브젝트 위치 변경
+    private void FixedUpdate() {
+        Rotate();
+
+        if (dashRequested)
+        {
+            TryStartDash();
+            dashRequested = false;
+        }
+
+        Move();
+        playerAnimator.SetFloat("Move", IsDashing ? 1f : GetMoveDirection().magnitude);
+    }
+
+    private void Move() {
+        if (IsDashing)
+        {
+            if (Time.time >= dashEndTime)
+            {
+                IsDashing = false;
+            }
+            else
+            {
+                float dashSpeed = dashDistance / dashDuration;
+                Vector3 dashMoveDistance = dashDirection * dashSpeed * Time.deltaTime;
+                playerRigidbody.MovePosition(playerRigidbody.position + dashMoveDistance);
+                return;
+            }
+        }
+
+        Vector3 moveDistance = GetMoveDirection() * moveSpeed * Time.deltaTime;
         playerRigidbody.MovePosition(playerRigidbody.position + moveDistance);
+    }
+
+    private void TryStartDash() {
+        if (IsDashing || Time.time < nextDashTime)
+        {
+            return;
+        }
+
+        dashDirection = GetMoveDirection();
+        if (dashDirection.sqrMagnitude <= 0.01f)
+        {
+            dashDirection = transform.forward;
+        }
+
+        dashDirection.y = 0f;
+        dashDirection.Normalize();
+
+        IsDashing = true;
+        dashEndTime = Time.time + dashDuration;
+        nextDashTime = Time.time + dashCooldown;
     }
 
     private Vector3 GetMoveDirection() {
@@ -43,7 +101,6 @@ public class PlayerMovement : MonoBehaviour {
         return Vector3.ClampMagnitude(inputDirection, 1f);
     }
 
-    // 마우스 위치를 바라보도록 캐릭터를 회전
     private void Rotate() {
         if (rotateToMouse && TryGetMouseLookPoint(out Vector3 lookPoint))
         {
@@ -59,11 +116,8 @@ public class PlayerMovement : MonoBehaviour {
                     rotateSpeed * Time.deltaTime);
 
                 playerRigidbody.MoveRotation(nextRotation);
-                return;
             }
         }
-
-        // 카메라가 없거나 마우스 위치 계산에 실패하면 현재 방향을 유지
     }
 
     private bool TryGetMouseLookPoint(out Vector3 lookPoint) {
@@ -89,5 +143,33 @@ public class PlayerMovement : MonoBehaviour {
         }
 
         return false;
+    }
+
+    private void OnGUI() {
+        if (GameManager.instance != null && GameManager.instance.isGameover)
+        {
+            return;
+        }
+
+        EnsureDashStyle();
+
+        float cooldownRemain = Mathf.Max(0f, nextDashTime - Time.time);
+        string dashText = cooldownRemain <= 0f
+            ? "Dash Ready : Shift"
+            : "Dash Cooldown : " + cooldownRemain.ToString("0.0") + "s";
+
+        GUI.Label(new Rect(18f, Screen.height - 44f, 220f, 28f), dashText, dashStyle);
+    }
+
+    private void EnsureDashStyle() {
+        if (dashStyle != null)
+        {
+            return;
+        }
+
+        dashStyle = new GUIStyle(GUI.skin.label);
+        dashStyle.fontSize = 18;
+        dashStyle.fontStyle = FontStyle.Bold;
+        dashStyle.normal.textColor = new Color(0.35f, 0.95f, 1f);
     }
 }

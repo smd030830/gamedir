@@ -40,7 +40,7 @@ public class IntroSceneController : MonoBehaviour {
 
         GUI.Label(
             new Rect(panelRect.x + 30f, panelRect.y + 115f, panelWidth - 60f, 90f),
-            "Move with W/S, aim with the mouse, survive the waves, and collect bonus weapons.",
+            "Move with W/S, aim with the mouse, dash with Shift, survive the waves, and collect bonus weapons.",
             bodyStyle);
 
         if (GUI.Button(

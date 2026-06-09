@@ -76,6 +76,11 @@ public class PlayerHealth : LivingEntity {
     // 데미지 처리
     public override void OnDamage(float damage, Vector3 hitPoint,
         Vector3 hitDirection) {
+        if (playerMovement != null && playerMovement.IsDashing)
+        {
+            return;
+        }
+
         if (shield > 0f)
         {
             float blockedDamage = Mathf.Min(shield, damage);
